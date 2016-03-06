@@ -42,27 +42,40 @@ which_git() {
 }
 
 git_init_if_necessary() {
-  set -e
-  trap '{ rm -rf .git; exit 1; }' EXIT
-
   if [[ ! -d ".git" ]]
   then
+    set -e
+    trap '{ rm -rf .git; exit 1; }' EXIT
     git init
     git config --bool core.autocrlf false
-    git config remote.origin.url https://github.com/Homebrew/homebrew.git
+    git config remote.origin.url https://github.com/Homebrew/brew.git
     git config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
     git fetch origin
     git reset --hard origin/master
     SKIP_FETCH_HOMEBREW_REPOSITORY=1
+    set +e
+    trap - EXIT
+    return
   fi
 
-  set +e
-  trap - EXIT
-
-  if [[ "$(git remote show origin -n)" = *"mxcl/homebrew"* ]]
+  remote_info="$(git remote show origin -n)"
+  if [[ "$remote_info" = *"mxcl/homebrew"* ]]
   then
-    git remote set-url origin https://github.com/Homebrew/homebrew.git &&
+    git remote set-url origin https://github.com/Homebrew/brew.git &&
     git remote set-url --delete origin ".*mxcl\/homebrew.*"
+  elif [[ "$remote_info" = *"Homebrew/homebrew"* ]]
+  then
+    git remote set-url origin https://github.com/Homebrew/brew.git &&
+    git remote set-url --delete origin ".*Homebrew\/homebrew.*"
+  fi
+
+  # Check whether Library/Formula is a symlink, so we know whether we need to perform migration
+  # We don't use remote as indicator here in case user is using a custom remote.
+  if [[ ! -L "Library/Formula" ]]
+  then
+    git remote set-url origin https://github.com/Homebrew/brew.git || odie "Fail to set new remote!"
+    git fetch origin || odie "Fail to fetch Homebrew/brew!"
+    SKIP_FETCH_HOMEBREW_REPOSITORY=1
   fi
 }
 
@@ -211,16 +224,13 @@ pull() {
     STASHED="1"
   fi
 
-  if [[ "$INITIAL_BRANCH" != "$UPSTREAM_BRANCH" && -n "$INITIAL_BRANCH" ]]
+  # Recreate and check out `#{upstream_branch}` if unable to fast-forward
+  # it to `origin/#{@upstream_branch}`. Otherwise, just check it out.
+  if git merge-base --is-ancestor "$UPSTREAM_BRANCH" "origin/$UPSTREAM_BRANCH" &>/dev/null
   then
-    # Recreate and check out `#{upstream_branch}` if unable to fast-forward
-    # it to `origin/#{@upstream_branch}`. Otherwise, just check it out.
-    if git merge-base --is-ancestor "$UPSTREAM_BRANCH" "origin/$UPSTREAM_BRANCH" &>/dev/null
-    then
-      git checkout --force "$UPSTREAM_BRANCH" "${QUIET_ARGS[@]}"
-    else
-      git checkout --force -B "$UPSTREAM_BRANCH" "origin/$UPSTREAM_BRANCH" "${QUIET_ARGS[@]}"
-    fi
+    git checkout --force "$UPSTREAM_BRANCH" "${QUIET_ARGS[@]}"
+  else
+    git checkout --force -B "$UPSTREAM_BRANCH" "origin/$UPSTREAM_BRANCH" "${QUIET_ARGS[@]}"
   fi
 
   INITIAL_REVISION="$(read_current_revision)"
