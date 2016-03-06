@@ -73,7 +73,7 @@ git_init_if_necessary() {
   # We don't use remote as indicator here in case user is using a custom remote.
   if [[ ! -L "Library/Formula" ]]
   then
-    git remote set-url origin https://github.com/Homebrew/brew.git || odie "Fail to set new remote!"
+    git remote set-url origin https://github.com/xu-cheng/brew.git || odie "Fail to set new remote!"
     git fetch origin || odie "Fail to fetch Homebrew/brew!"
     SKIP_FETCH_HOMEBREW_REPOSITORY=1
   fi
